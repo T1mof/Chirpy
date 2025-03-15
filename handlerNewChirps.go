@@ -1,6 +1,7 @@
 package main
 
 import (
+	"Chirpy/internal/auth"
 	"Chirpy/internal/database"
 	"encoding/json"
 	"net/http"
@@ -20,8 +21,7 @@ type Chirp struct {
 
 func (cfg *apiConfig) handlerNewChirps(w http.ResponseWriter, r *http.Request) {
 	type parameters struct {
-		Body   string    `json:"body"`
-		UserID uuid.UUID `json:"user_id"`
+		Body string `json:"body"`
 	}
 
 	decoder := json.NewDecoder(r.Body)
@@ -32,12 +32,24 @@ func (cfg *apiConfig) handlerNewChirps(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	token, err := auth.GetBearerToken(r.Header)
+	if err != nil {
+		respondWithError(w, 500, "Error token auth")
+		return
+	}
+
+	user_id, err := auth.ValidateJWT(token, cfg.secret)
+	if err != nil {
+		respondWithError(w, 401, "Unauthorized")
+		return
+	}
+
 	if len(params.Body) > 140 {
 		respondWithError(w, 400, "Chirp is too long")
 		return
 	}
 	params.Body = badWordReplace(params.Body)
-	chirp, err := cfg.database.CreateChirp(r.Context(), database.CreateChirpParams{Body: params.Body, UserID: params.UserID})
+	chirp, err := cfg.database.CreateChirp(r.Context(), database.CreateChirpParams{Body: params.Body, UserID: user_id})
 	if err != nil {
 		respondWithError(w, 400, "Error while create chirp")
 		return
